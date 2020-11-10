@@ -1,4 +1,4 @@
-package irisCaptchaGo
+package iriscaptchago
 
 import (
 	"crypto/rsa"
@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"log"
@@ -21,6 +22,7 @@ import (
 
 //validationUrl :  is where the http request sent to
 const validationUrl = `https://captcha.irisdev.net/check`
+const IrisDevServer = `https://captcha.irisdev.net`
 
 var (
 	// ErrHandlerTimeout = http.ErrHandlerTimeout
@@ -62,7 +64,7 @@ func NewIrisCaptchaHandler(secret string) (IrisCaptchaHandler, error) {
 	h := new(irisCaptchaHandler)
 	var err error
 
-	h.provider = "https://captcha.irisdev.net"
+	h.provider = IrisDevServer
 	err = h.init(secret)
 	return h, err
 }
@@ -112,6 +114,7 @@ func (c *irisCaptchaHandler) init(secret string) error {
 	}
 	if err := c.loadPublicKey(); err != nil {
 		log.Printf("Couldn't Load Public-Key From %s , Using request mode\n", c.provider)
+		log.Panic(err)
 	}
 
 	c.js = fmt.Sprintf(`<script src="https://captcha.irisdev.net/js/%s></script>`, c.appUid)
@@ -135,11 +138,12 @@ func (c *irisCaptchaHandler) loadPublicKey() error {
 
 	pembock, _ := pem.Decode([]byte(bs))
 
-	c.publicKey, err = x509.ParsePKCS1PublicKey(pembock.Bytes)
+	i, err := x509.ParsePKIXPublicKey(pembock.Bytes)
 	if err != nil {
 		c.Unlock()
 		return err
 	}
+	c.publicKey = i.(*rsa.PublicKey)
 	c.Unlock()
 	return nil
 }
@@ -178,19 +182,36 @@ func (c *irisCaptchaHandler) validateSig(userResponse, remoteIP string) (UserRes
 	tkn, err := jwt.ParseWithClaims(userResponse, &ur, func(token *jwt.Token) (interface{}, error) {
 		return c.publicKey, nil
 	})
-
+	if err != nil {
+		ur.Success = false
+		return ur, err
+	}
 	if !tkn.Valid {
 		err = ErrSignatureInvalid
+		ur.Success = false
 		return ur, err
 	}
 	if remoteIP != "" {
 		if ur.IP != remoteIP {
 			err = ErrMisMachIP
+			ur.Success = false
 			return ur, err
 		}
 	}
 
 	return ur, err
+}
+func (c *irisCaptchaHandler) TestValidateSig(t *testing.T) {
+	ur, err := c.validateSig("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWNjZXNzIjp0cnVlLCJob3N0bmFtZSI6ImlyaXNkZXYubmV0IiwiaXAiOiIzNy41OS4xNzMuMjAiLCJleHAiOjE2MDUwMzE2NTcsImlhdCI6MTYwNTAzMTU5N30.KXk2VFUuE9YxyVZRlsEvT9wMYibXqp77WvF3nxRPnqSXA3gKaD6Pjm0UIP2HUkwD-sEW114q5HmSMrB2IGENoN5X4AUal5cmbKUisoCiAiM7JXHxmjqmBzUWG7P6dGSMDjWfKPQ46TMuyQMtyZmrOMcxIgL1gPRbzW7yrPZqPEOGySdr-DLi1NGBUR8y_SEHesP_romn4P3qBc3M7B183Oe0tYP6q0REKboNuRwfhnA7cnpcmCT-_dDV4TpLpIPJcIRW4uAuEDr9POTvBv_96iV7XzxyVnmrsf8bbfUUD0ZyhnP3eK8VDjtqrpCIBNP7Zwm_6VqqhGAioUcrgZfH8A", "")
+	if err == nil {
+		t.Errorf("got %v, want time expired", err)
+	}
+	if err == jwt.ErrSignatureInvalid {
+		t.Errorf("got %v, want %v", err, nil)
+	}
+	if ur.Success == true {
+		t.Errorf("got %v, want %v", ur.Success, false)
+	}
 }
 
 //validateReq : validate the user response using requesting to irisdev server
@@ -229,4 +250,14 @@ func (c *irisCaptchaHandler) validateReq(userResponse, remoteIP string) (UserRes
 	ur.Hostname = res.Hostname
 	ur.IP = remoteIP
 	return ur, err
+}
+
+func (c *irisCaptchaHandler) TestValidateReq(t *testing.T) {
+	ur, err := c.validateReq("eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWNjZXNzIjp0cnVlLCJob3N0bmFtZSI6ImlyaXNkZXYubmV0IiwiaXAiOiIzNy41OS4xNzMuMjAiLCJleHAiOjE2MDUwMzE2NTcsImlhdCI6MTYwNTAzMTU5N30.KXk2VFUuE9YxyVZRlsEvT9wMYibXqp77WvF3nxRPnqSXA3gKaD6Pjm0UIP2HUkwD-sEW114q5HmSMrB2IGENoN5X4AUal5cmbKUisoCiAiM7JXHxmjqmBzUWG7P6dGSMDjWfKPQ46TMuyQMtyZmrOMcxIgL1gPRbzW7yrPZqPEOGySdr-DLi1NGBUR8y_SEHesP_romn4P3qBc3M7B183Oe0tYP6q0REKboNuRwfhnA7cnpcmCT-_dDV4TpLpIPJcIRW4uAuEDr9POTvBv_96iV7XzxyVnmrsf8bbfUUD0ZyhnP3eK8VDjtqrpCIBNP7Zwm_6VqqhGAioUcrgZfH8A", "")
+	if err != nil {
+		t.Errorf("got %v, want %v", err, nil)
+	}
+	if ur.Success == true {
+		t.Errorf("got %v, want %v", ur.Success, false)
+	}
 }
