@@ -4,13 +4,13 @@ import (
 	"log"
 	"net/http"
 
-	ic "github.com/IrisDev-net/irisCaptchaGo"
+	irisCaptcha "github.com/IrisDev-net/iriscaptchago"
 )
 
 const myIrisCaptchaSecret = `533a64afb4c496cc34dfd00d1ecbd45cfa2784b2c3eba4aa02e7a4dcbe081aa40x2711`
 
 func main() {
-	ICH, err := ic.NewIrisCaptchaHandler(myIrisCaptchaSecret)
+	ICH, err := irisCaptcha.NewIrisCaptchaHandler(myIrisCaptchaSecret)
 	if err != nil {
 		log.Panic(err)
 	}
