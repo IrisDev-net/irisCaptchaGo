@@ -1,4 +1,4 @@
-module github.com/IrisDev-net/irisCaptchaGo
+module github.com/IrisDev-net/iriscaptchago
 
 go 1.15
 
